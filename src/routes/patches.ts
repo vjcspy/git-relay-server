@@ -100,7 +100,7 @@ export function createPatchesRouter(
    */
   router.get('/status/:sessionId', (req: Request, res: Response) => {
     try {
-      const { sessionId } = req.params;
+      const sessionId = req.params.sessionId as string;
       const session = sessionStore.getSession(sessionId);
 
       const response: StatusResponse = {
