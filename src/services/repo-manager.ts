@@ -60,20 +60,21 @@ export class RepoManager {
   async getRepo(owner: string, repo: string, branch: string, baseBranch: string): Promise<string> {
     const repoPath = path.join(this.reposDir, owner, repo);
     const repoUrl = `https://x-access-token:${this.githubPat}@github.com/${owner}/${repo}.git`;
-    const git = this.createGit(repoPath);
 
     try {
       if (!fs.existsSync(path.join(repoPath, '.git'))) {
-        // First time — clone
+        // First time — clone (directory doesn't exist yet, use parent)
         fs.mkdirSync(path.join(this.reposDir, owner), { recursive: true });
         const parentGit = this.createGit(path.join(this.reposDir, owner));
         await parentGit.clone(repoUrl, repo);
       } else {
         // Existing repo — fetch latest
+        const git = this.createGit(repoPath);
         await git.fetch('origin');
       }
 
-      // Checkout target branch based on remote base branch
+      // Now repo exists — checkout target branch based on remote base branch
+      const git = this.createGit(repoPath);
       await git.checkout(['-B', branch, `origin/${baseBranch}`]);
 
       return repoPath;
