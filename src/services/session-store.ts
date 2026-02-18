@@ -1,7 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { IncompleteChunksError, SessionCompletedError, SessionNotFoundError } from '../lib/errors';
+import {
+  IncompleteChunksError,
+  RelayError,
+  SessionCompletedError,
+  SessionNotFoundError,
+} from '../lib/errors';
 import type { SessionInfo, SessionStatus } from '../lib/types';
 
 const SESSIONS_DIR = '/tmp/relay-sessions';
@@ -44,7 +49,13 @@ export class SessionStore {
   ): number {
     let session = this.sessions.get(sessionId);
 
-    if (session && (session.status === 'processing' || session.status === 'pushed' || session.status === 'failed')) {
+    if (
+      session &&
+      (session.status === 'complete' ||
+        session.status === 'processing' ||
+        session.status === 'pushed' ||
+        session.status === 'failed')
+    ) {
       throw new SessionCompletedError(sessionId);
     }
 
@@ -107,6 +118,49 @@ export class SessionStore {
       throw new SessionNotFoundError(sessionId);
     }
     return session;
+  }
+
+  /**
+   * Mark receiving as complete after all chunks are uploaded.
+   * Only receiving -> complete transition is allowed.
+   */
+  markComplete(sessionId: string): void {
+    const session = this.getSession(sessionId);
+    if (session.status !== 'receiving') {
+      throw new RelayError(
+        'INVALID_STATE',
+        `Session ${sessionId} is ${session.status}, expected receiving`,
+        409,
+      );
+    }
+
+    if (session.receivedChunks.size < session.totalChunks) {
+      throw new IncompleteChunksError(session.totalChunks, session.receivedChunks.size);
+    }
+
+    this.setStatus(sessionId, 'complete', 'Upload complete');
+  }
+
+  /**
+   * Begin processing for a complete session.
+   * Returns true when this call started processing, false when already processing.
+   */
+  startProcessing(sessionId: string): boolean {
+    const session = this.getSession(sessionId);
+    if (session.status === 'processing') {
+      return false;
+    }
+
+    if (session.status !== 'complete') {
+      throw new RelayError(
+        'INVALID_STATE',
+        `Session ${sessionId} is ${session.status}, expected complete`,
+        409,
+      );
+    }
+
+    this.setStatus(sessionId, 'processing', 'Processing patch');
+    return true;
   }
 
   /** Update session status */
