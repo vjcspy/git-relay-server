@@ -7,7 +7,7 @@ module.exports = {
       NODE_ENV: 'production',
       // v2-only relay transport encryption (server decrypts v2 envelopes only)
       TRANSPORT_CRYPTO_MODE: 'v2',
-      TRANSPORT_KEY_ID: '<transport-key-id>',
+      TRANSPORT_KEY_ID: 'relay-v2-2026-02',
       // Escaped single-line PEM, e.g. -----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n
       TRANSPORT_PRIVATE_KEY_PEM: '<escaped-x25519-private-key-pem>',
       TRANSPORT_REPLAY_TTL_MS: '300000',
