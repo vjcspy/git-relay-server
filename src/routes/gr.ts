@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from 'express';
 import type { AppConfig } from '../lib/config';
 import { RelayError, SessionNotFoundError } from '../lib/errors';
 import type { GRProcessRequest } from '../lib/types';
-import { applyPatch, pushBranch } from '../services/git';
+import { applyBundle, getRemoteInfo } from '../services/git';
 import { RepoManager, withRepoLock } from '../services/repo-manager';
 import { SessionStore } from '../services/session-store';
 
@@ -19,6 +19,41 @@ export function createGRRouter(
     GIT_COMMITTER_NAME: config.gitCommitterName,
     GIT_COMMITTER_EMAIL: config.gitCommitterEmail,
   };
+
+  /**
+   * GET /api/gr/remote-info
+   * Get the latest commit SHA for a remote branch.
+   */
+  router.get('/remote-info', async (req: Request, res: Response) => {
+    try {
+      const repo = req.query.repo as string;
+      const branch = req.query.branch as string;
+
+      if (!repo || !branch) {
+        res.status(400).json({
+          error: 'INVALID_INPUT',
+          message: 'Missing required query params: repo, branch',
+        });
+        return;
+      }
+
+      const repoParts = repo.split('/');
+      if (repoParts.length !== 2 || !repoParts[0] || !repoParts[1]) {
+        res.status(400).json({
+          error: 'INVALID_INPUT',
+          message: 'repo must be in format "owner/repo"',
+        });
+        return;
+      }
+
+      const remoteUrl = `https://x-access-token:${config.githubPat}@github.com/${repo}.git`;
+      const sha = await getRemoteInfo(remoteUrl, branch, gitEnv);
+
+      res.status(200).json({ sha });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
 
   /**
    * POST /api/gr/process
@@ -87,9 +122,8 @@ export function createGRRouter(
       // 2. Prepare repo (clone/fetch + checkout)
       const repoPath = await repoManager.getRepo(owner, repo, branch, baseBranch);
 
-      // 3. Apply patch and push
-      await applyPatch(repoPath, patchContent, gitEnv);
-      const commitSha = await pushBranch(repoPath, branch, gitEnv);
+      // 3. Apply bundle and push
+      const commitSha = await applyBundle(repoPath, patchContent, branch, sessionId, gitEnv);
       const commitUrl = `https://github.com/${owner}/${repo}/commit/${commitSha}`;
 
       // 4. Update status

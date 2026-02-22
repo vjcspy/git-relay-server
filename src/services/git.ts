@@ -7,36 +7,50 @@ import simpleGit from 'simple-git';
 import { GitOperationError } from '../lib/errors';
 
 /**
- * Apply a patch using `git am --3way`.
- * Preserves commit message from the patch.
+ * Apply a bundle using `git fetch` into a temp ref and push it directly.
+ * Preserves all commit metadata (SHA, author, committer, date, message).
  *
  * @param repoPath - Path to the git repo
- * @param patchContent - Raw patch content (from format-patch)
+ * @param bundleContent - Raw bundle content
+ * @param branch - Target branch to push
+ * @param sessionId - Session identifier for temp ref
  * @param gitEnv - Git identity env vars
+ * @returns Commit SHA of the pushed ref
  */
-export async function applyPatch(
+export async function applyBundle(
   repoPath: string,
-  patchContent: Buffer,
+  bundleContent: Buffer,
+  branch: string,
+  sessionId: string,
   gitEnv: Record<string, string>,
-): Promise<void> {
-  // Write patch to a temp file (git am reads from file)
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-patch-'));
-  const patchFile = path.join(tmpDir, 'patch.mbox');
-  fs.writeFileSync(patchFile, patchContent);
+): Promise<string> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-bundle-'));
+  const bundleFile = path.join(tmpDir, 'relay.bundle');
+  fs.writeFileSync(bundleFile, bundleContent);
 
   const git = simpleGit(repoPath).env(gitEnv);
 
   try {
-    await git.raw(['am', '--3way', '--committer-date-is-author-date', patchFile]);
+    // Verify the bundle
+    await git.raw(['bundle', 'verify', bundleFile]);
+
+    // Fetch from bundle into a temporary ref
+    const tempRef = `refs/relay/${sessionId}`;
+    await git.raw(['fetch', bundleFile, `${branch}:${tempRef}`]);
+
+    // Ensure we have a SHA to return
+    const sha = await git.revparse([tempRef]);
+
+    // Push the temporary ref to origin branch
+    await git.push('origin', `${tempRef}:refs/heads/${branch}`);
+
+    // Cleanup temp ref
+    await git.raw(['update-ref', '-d', tempRef]);
+
+    return sha.trim();
   } catch (err) {
-    // Abort the failed am to leave repo in clean state
-    try {
-      await git.raw(['am', '--abort']);
-    } catch {
-      // Abort may fail if there's nothing to abort — ignore
-    }
     const message = err instanceof Error ? err.message : String(err);
-    throw new GitOperationError('apply-patch', message);
+    throw new GitOperationError('apply-bundle', message);
   } finally {
     // Cleanup temp file
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -44,26 +58,26 @@ export async function applyPatch(
 }
 
 /**
- * Push branch to origin and return the HEAD commit SHA.
+ * Get the latest commit SHA for a branch on the remote repository.
  *
- * @param repoPath - Path to the git repo
- * @param branch - Branch to push
+ * @param remoteUrl - URL of the remote repository with auth token
+ * @param branch - Branch to check
  * @param gitEnv - Git identity env vars
- * @returns Commit SHA of HEAD after push
+ * @returns Remote commit SHA, or empty string if branch doesn't exist
  */
-export async function pushBranch(
-  repoPath: string,
+export async function getRemoteInfo(
+  remoteUrl: string,
   branch: string,
   gitEnv: Record<string, string>,
 ): Promise<string> {
-  const git = simpleGit(repoPath).env(gitEnv);
-
+  // Can be run anywhere; we'll use os.tmpdir() to avoid issues
+  const git = simpleGit(os.tmpdir()).env(gitEnv);
   try {
-    await git.push('origin', branch, ['--force-with-lease']);
-    const sha = await git.revparse(['HEAD']);
-    return sha.trim();
+    const out = await git.raw(['ls-remote', remoteUrl, `refs/heads/${branch}`]);
+    const sha = out.split('\t')[0];
+    return sha ? sha.trim() : '';
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new GitOperationError('push', message);
+    throw new GitOperationError('ls-remote', message);
   }
 }
