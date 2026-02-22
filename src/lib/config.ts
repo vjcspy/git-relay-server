@@ -11,6 +11,8 @@ export interface AppConfig {
   githubPat: string;
   reposDir: string;
   sessionTtlMs: number;
+  fileStorageDir: string;
+  maxFileSizeBytes: number;
   gitAuthorName: string;
   gitAuthorEmail: string;
   gitCommitterName: string;
@@ -104,6 +106,8 @@ export function loadConfig(): AppConfig {
     githubPat: process.env.GITHUB_PAT!,
     reposDir: process.env.REPOS_DIR || '/data/repos',
     sessionTtlMs: parseInt(process.env.SESSION_TTL_MS || '600000', 10),
+    fileStorageDir: process.env.FILE_STORAGE_DIR || '/data/file-storage',
+    maxFileSizeBytes: parseInt(process.env.MAX_FILE_SIZE_BYTES || '104857600', 10),
     gitAuthorName: process.env.GIT_AUTHOR_NAME || 'relay-bot',
     gitAuthorEmail: process.env.GIT_AUTHOR_EMAIL || 'relay@noreply',
     gitCommitterName: process.env.GIT_COMMITTER_NAME || 'relay-bot',

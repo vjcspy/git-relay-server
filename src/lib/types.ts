@@ -1,9 +1,10 @@
-/** Session status state machine: receiving → complete → processing → pushed | failed */
+/** Session status state machine: receiving → complete → processing → pushed | stored | failed */
 export type SessionStatus =
   | 'receiving'
   | 'complete'
   | 'processing'
   | 'pushed'
+  | 'stored'
   | 'failed';
 
 export interface SessionInfo {
@@ -37,6 +38,14 @@ export interface GRProcessRequest {
   baseBranch: string;
 }
 
+/** POST /api/file/store request body */
+export interface FileStoreRequest {
+  sessionId: string;
+  fileName: string;
+  size: number;
+  sha256: string;
+}
+
 /** GET /api/data/status/:sessionId response */
 export interface StatusResponse {
   sessionId: string;
@@ -47,6 +56,8 @@ export interface StatusResponse {
     totalChunks?: number;
     commitSha?: string;
     commitUrl?: string;
+    storedPath?: string;
+    storedSize?: number;
     error?: string;
   };
 }

@@ -3,6 +3,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import type { AppConfig } from './lib/config';
 import { DecryptionError, UnauthorizedError } from './lib/errors';
 import { createDataRouter } from './routes/data';
+import { createFileRouter } from './routes/file';
 import { createGRRouter } from './routes/gr';
 import healthRouter from './routes/health';
 import {
@@ -89,6 +90,7 @@ export function createApp(config: AppConfig) {
 
   app.use('/', healthRouter);
   app.use('/api/data', createDataRouter(config, sessionStore));
+  app.use('/api/file', createFileRouter(config, sessionStore));
   app.use('/api/gr', createGRRouter(config, sessionStore, repoManager));
 
   // --- Global error handler ---

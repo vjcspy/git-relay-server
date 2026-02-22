@@ -54,6 +54,7 @@ export class SessionStore {
       (session.status === 'complete' ||
         session.status === 'processing' ||
         session.status === 'pushed' ||
+        session.status === 'stored' ||
         session.status === 'failed')
     ) {
       throw new SessionCompletedError(sessionId);
@@ -145,7 +146,7 @@ export class SessionStore {
    * Begin processing for a complete session.
    * Returns true when this call started processing, false when already processing.
    */
-  startProcessing(sessionId: string): boolean {
+  startProcessing(sessionId: string, message = 'Processing patch'): boolean {
     const session = this.getSession(sessionId);
     if (session.status === 'processing') {
       return false;
@@ -159,7 +160,7 @@ export class SessionStore {
       );
     }
 
-    this.setStatus(sessionId, 'processing', 'Processing patch');
+    this.setStatus(sessionId, 'processing', message);
     return true;
   }
 
