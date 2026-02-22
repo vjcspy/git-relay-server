@@ -5,7 +5,10 @@ import { DecryptionError, UnauthorizedError } from './lib/errors';
 import { createDataRouter } from './routes/data';
 import { createGRRouter } from './routes/gr';
 import healthRouter from './routes/health';
-import { decryptPayload } from './services/crypto';
+import {
+  decryptPayload,
+  validateAndStripReplayMetadata,
+} from './services/crypto';
 import { RepoManager } from './services/repo-manager';
 import { SessionStore } from './services/session-store';
 
@@ -31,6 +34,8 @@ export function createApp(config: AppConfig) {
 
   const sessionStore = new SessionStore(config.sessionTtlMs);
   sessionStore.startCleanup();
+  const replayNonceCache = new ReplayNonceCache(config.transportReplayTtlMs);
+  replayNonceCache.startCleanup();
 
   const repoManager = new RepoManager(config);
 
@@ -45,7 +50,7 @@ export function createApp(config: AppConfig) {
   });
 
   // Decrypt encrypted request payloads after auth:
-  // { gameData: "<base64(iv+authTag+ciphertext)>" } -> req.body metadata + req.binaryData
+  // { gameData: "<base64(...)>" } -> req.body metadata + req.binaryData
   app.use('/api', (req: Request, _res: Response, next: NextFunction) => {
     if (req.method === 'GET' || req.method === 'HEAD') {
       next();
@@ -59,8 +64,16 @@ export function createApp(config: AppConfig) {
     }
 
     try {
-      const { metadata, data } = decryptPayload(gameData, config.encryptionKey);
-      req.body = metadata;
+      const { metadata, data } = decryptPayload(gameData, config);
+      const replay = validateAndStripReplayMetadata(metadata, {
+        ttlMs: config.transportReplayTtlMs,
+        clockSkewMs: config.transportClockSkewMs,
+      });
+      if (!replayNonceCache.accept(replay.nonce)) {
+        throw new DecryptionError('Replay detected: nonce already used');
+      }
+
+      req.body = replay.metadata;
       req.binaryData = data;
       next();
     } catch (err) {
@@ -94,4 +107,34 @@ export function createApp(config: AppConfig) {
   });
 
   return { app, sessionStore };
+}
+
+class ReplayNonceCache {
+  private readonly nonces = new Map<string, number>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(private readonly ttlMs: number) {}
+
+  startCleanup(): void {
+    this.cleanupTimer = setInterval(() => this.cleanup(), 60_000);
+    this.cleanupTimer.unref();
+  }
+
+  accept(nonce: string, nowMs = Date.now()): boolean {
+    const expiresAt = this.nonces.get(nonce);
+    if (expiresAt && expiresAt > nowMs) {
+      return false;
+    }
+
+    this.nonces.set(nonce, nowMs + this.ttlMs);
+    return true;
+  }
+
+  private cleanup(nowMs = Date.now()): void {
+    for (const [nonce, expiresAt] of this.nonces) {
+      if (expiresAt <= nowMs) {
+        this.nonces.delete(nonce);
+      }
+    }
+  }
 }
