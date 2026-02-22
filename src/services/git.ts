@@ -36,7 +36,7 @@ export async function applyBundle(
 
     // Fetch from bundle into a temporary ref
     const tempRef = `refs/relay/${sessionId}`;
-    await git.raw(['fetch', bundleFile, `${branch}:${tempRef}`]);
+    await git.raw(['fetch', bundleFile, `HEAD:${tempRef}`]);
 
     // Ensure we have a SHA to return
     const sha = await git.revparse([tempRef]);
