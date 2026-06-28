@@ -68,14 +68,13 @@ export class RepoManager {
         const parentGit = this.createGit(path.join(this.reposDir, owner));
         await parentGit.clone(repoUrl, repo);
       } else {
-        // Existing repo — fetch latest
+        // Existing repo — fetch ONLY the base branch to obtain the bundle's
+        // prerequisite objects. A full `fetch origin` would mirror every remote
+        // branch, which causes directory/file (D/F) ref conflicts under
+        // refs/remotes/origin/*; the narrow fetch avoids that surface entirely.
         const git = this.createGit(repoPath);
-        await git.fetch('origin');
+        await git.fetch('origin', baseBranch);
       }
-
-      // Now repo exists — checkout target branch based on remote base branch
-      const git = this.createGit(repoPath);
-      await git.checkout(['-B', branch, `origin/${baseBranch}`]);
 
       return repoPath;
     } catch (err) {
