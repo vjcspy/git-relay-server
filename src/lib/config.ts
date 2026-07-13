@@ -13,6 +13,10 @@ export interface AppConfig {
   sessionTtlMs: number;
   fileStorageDir: string;
   maxFileSizeBytes: number;
+  maxChunkSizeBytes: number;
+  maxChunksPerSession: number;
+  maxActiveSessions: number;
+  maxTemporaryStorageBytes: number;
   gitAuthorName: string;
   gitAuthorEmail: string;
   gitCommitterName: string;
@@ -108,6 +112,13 @@ export function loadConfig(): AppConfig {
     sessionTtlMs: parseInt(process.env.SESSION_TTL_MS || '600000', 10),
     fileStorageDir: process.env.FILE_STORAGE_DIR || '/data/file-storage',
     maxFileSizeBytes: parseInt(process.env.MAX_FILE_SIZE_BYTES || '104857600', 10),
+    maxChunkSizeBytes: parseInt(process.env.MAX_CHUNK_SIZE_BYTES || '2621440', 10),
+    maxChunksPerSession: parseInt(process.env.MAX_CHUNKS_PER_SESSION || '64', 10),
+    maxActiveSessions: parseInt(process.env.MAX_ACTIVE_SESSIONS || '32', 10),
+    maxTemporaryStorageBytes: parseInt(
+      process.env.MAX_TEMPORARY_STORAGE_BYTES || '536870912',
+      10,
+    ),
     gitAuthorName: process.env.GIT_AUTHOR_NAME || 'relay-bot',
     gitAuthorEmail: process.env.GIT_AUTHOR_EMAIL || 'relay@noreply',
     gitCommitterName: process.env.GIT_COMMITTER_NAME || 'relay-bot',

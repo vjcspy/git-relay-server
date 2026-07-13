@@ -11,6 +11,8 @@ export interface SessionInfo {
   sessionId: string;
   totalChunks: number;
   receivedChunks: Set<number>;
+  chunkSizes: Map<number, number>;
+  receivedBytes: number;
   status: SessionStatus;
   message: string;
   details: Record<string, unknown>;
@@ -54,10 +56,21 @@ export interface StatusResponse {
   details?: {
     chunksReceived?: number;
     totalChunks?: number;
+    receivedChunkIndexes?: number[];
     commitSha?: string;
     commitUrl?: string;
-    storedPath?: string;
+    fileId?: string;
     storedSize?: number;
     error?: string;
   };
+}
+
+export interface StoredFileMetadata {
+  version: 1;
+  id: string;
+  name: string;
+  size: number;
+  sha256: string;
+  storedAt: string;
+  storedFileName: string;
 }

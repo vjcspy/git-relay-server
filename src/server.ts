@@ -33,7 +33,7 @@ export function createApp(config: AppConfig) {
 
   // --- Services ---
 
-  const sessionStore = new SessionStore(config.sessionTtlMs);
+  const sessionStore = new SessionStore(config.sessionTtlMs, config);
   sessionStore.startCleanup();
   const replayNonceCache = new ReplayNonceCache(config.transportReplayTtlMs);
   replayNonceCache.startCleanup();

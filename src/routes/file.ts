@@ -13,16 +13,50 @@ export function createFileRouter(
   const router = Router();
   const fileStoreService = new FileStoreService(config);
 
+  router.get('/', (req: Request, res: Response) => {
+    try {
+      res.json(fileStoreService.listFiles(req.query.limit, req.query.cursor));
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.get('/:fileId/manifest', (req: Request, res: Response) => {
+    try {
+      res.json(fileStoreService.getManifest(req.params.fileId as string));
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.get('/:fileId/chunks/:index', (req: Request, res: Response) => {
+    try {
+      const index = Number(req.params.index);
+      const result = fileStoreService.readChunk(req.params.fileId as string, index);
+      res.set({
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': String(result.data.length),
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(result.metadata.name)}`,
+        'X-File-Id': result.metadata.id,
+        'X-Chunk-Index': String(index),
+        'X-Total-Chunks': String(result.totalChunks),
+      });
+      res.send(result.data);
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
   /**
    * POST /api/file/store
    * Trigger file finalize + store for a completed upload session.
    * Validates input, starts async processing, returns 202 immediately.
    */
-  router.post('/store', (req: Request, res: Response) => {
+  router.post('/store', async (req: Request, res: Response) => {
     try {
       const body = req.body as Partial<FileStoreRequest>;
 
-      if (!body.sessionId || !body.fileName || !body.size || !body.sha256) {
+      if (!body.sessionId || !body.fileName || body.size == null || !body.sha256) {
         res.status(400).json({
           error: 'INVALID_INPUT',
           message: 'Missing required fields: sessionId, fileName, size, sha256',
@@ -30,7 +64,12 @@ export function createFileRouter(
         return;
       }
 
-      if (typeof body.size !== 'number' || body.size <= 0) {
+      if (typeof body.fileName !== 'string' || body.fileName.length > 255) {
+        res.status(400).json({ error: 'INVALID_INPUT', message: 'fileName must be 1..255 characters' });
+        return;
+      }
+
+      if (typeof body.size !== 'number' || !Number.isSafeInteger(body.size) || body.size <= 0) {
         res.status(400).json({
           error: 'INVALID_INPUT',
           message: 'size must be a positive number',
@@ -54,9 +93,27 @@ export function createFileRouter(
         return;
       }
 
-      const started = sessionStore.startProcessing(body.sessionId, 'Processing file');
+      let started: boolean;
+      try {
+        started = sessionStore.startProcessing(body.sessionId, 'Processing file');
+      } catch (err) {
+        if (!(err instanceof SessionNotFoundError)) throw err;
+        // A process may have crashed after the atomic data rename but before the
+        // metadata commit. The request itself contains everything needed to
+        // verify and finish that data-only state without trusting a path.
+        const recovered = await fileStoreService.storeFile(
+          body.sessionId,
+          body.fileName,
+          body.size,
+          body.sha256,
+          sessionStore,
+        );
+        res.json({ success: true, status: 'stored', fileId: recovered.fileId });
+        return;
+      }
       if (!started) {
-        res.status(202).json({ success: true, status: 'processing' });
+        const session = sessionStore.getSession(body.sessionId);
+        res.status(session.status === 'stored' ? 200 : 202).json({ success: true, status: session.status });
         return;
       }
 
@@ -100,7 +157,7 @@ async function processFileStore(
   );
 
   sessionStore.setStatus(sessionId, 'stored', 'Stored file', {
-    storedPath: result.storedPath,
+    fileId: result.fileId,
     storedSize: result.storedSize,
   });
 }

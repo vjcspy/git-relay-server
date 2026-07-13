@@ -6,7 +6,7 @@ import type { ChunkRequest, CompleteRequest, StatusResponse } from '../lib/types
 import { SessionStore } from '../services/session-store';
 
 export function createDataRouter(
-  _config: AppConfig,
+  config: AppConfig,
   sessionStore: SessionStore,
 ): Router {
   const router = Router();
@@ -63,6 +63,11 @@ export function createDataRouter(
         return;
       }
 
+      if (req.binaryData.length > config.maxChunkSizeBytes) {
+        res.status(413).json({ error: 'CHUNK_TOO_LARGE', message: `Chunk exceeds ${config.maxChunkSizeBytes} bytes` });
+        return;
+      }
+
       const received = sessionStore.storeChunk(
         body.sessionId,
         body.chunkIndex,
@@ -114,6 +119,7 @@ export function createDataRouter(
         details: {
           chunksReceived: session.receivedChunks.size,
           totalChunks: session.totalChunks,
+          receivedChunkIndexes: [...session.receivedChunks].sort((a, b) => a - b),
           ...(session.details as Record<string, unknown>),
         },
       };
