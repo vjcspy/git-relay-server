@@ -1,3 +1,4 @@
+import { createPublicKey } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 
 import type { AppConfig } from '../lib/config';
@@ -12,6 +13,24 @@ export function createFileRouter(
 ): Router {
   const router = Router();
   const fileStoreService = new FileStoreService(config);
+
+  router.get('/transport-config', (_req: Request, res: Response) => {
+    if (!config.transportV2Key) {
+      res.status(503).json({
+        error: 'TRANSPORT_V2_UNAVAILABLE',
+        message: 'Server transport-v2 key is not configured',
+      });
+      return;
+    }
+
+    const publicKeyPem = createPublicKey(config.transportV2Key.privateKey)
+      .export({ type: 'spki', format: 'pem' })
+      .toString();
+    res.set('Cache-Control', 'private, no-store').json({
+      keyId: config.transportV2Key.keyId,
+      publicKeyPem,
+    });
+  });
 
   router.get('/', (req: Request, res: Response) => {
     try {
